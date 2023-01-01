@@ -1,0 +1,3 @@
+[submodule "implementation-a/mask-rcnn-fork"]
+	path = implementation-a/mask-rcnn-fork
+	url = https://github.com/MystikHub/Mask_RCNN.git
