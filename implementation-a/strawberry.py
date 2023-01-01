@@ -33,10 +33,10 @@ import skimage.draw
 import sys
 
 # Root directory of the project
-ROOT_DIR = os.path.abspath("../../")
+ROOT_DIR = os.path.abspath("./")
 
 # Import Mask RCNN
-sys.path.append(ROOT_DIR)  # To find local version of the library
+sys.path.append(os.path.join(ROOT_DIR, "mask-rcnn-fork"))  # To find local version of the library
 from mrcnn import model as modellib, utils
 from mrcnn import visualize
 from mrcnn.config import Config
@@ -61,21 +61,15 @@ class StrawberryConfig(Config):
     # Give the configuration a recognizable name
     NAME = "strawberry"
 
-    # We use a GPU with 12GB memory, which can fit two images.
-    # Adjust down if you use a smaller GPU.
-    # IMAGES_PER_GPU = 2
+    # We use a GPU with 6GB memory, which can fit one image.
+    # Adjust up if you use a larger GPU.
     IMAGES_PER_GPU = 1
 
     # Number of classes (including background)
-    NUM_CLASSES = 1 + 3  # Background + three strawberry classes
+    NUM_CLASSES = 1 + 3
 
     # Number of training steps per epoch
     STEPS_PER_EPOCH = 100
-
-    # Skip detections with < 90% confidence
-    DETECTION_MIN_CONFIDENCE = 0.9
-
-    # USE_MINI_MASK = False
 
 
 ############################################################
@@ -96,7 +90,6 @@ class StrawberryDataset(utils.Dataset):
 
         # Train or validation dataset?
         assert subset in ["train", "val"]
-        # dataset_dir = os.path.join(dataset_dir, subset)
         images_dir = os.path.join(dataset_dir, "images")
 
         image_file_names = os.listdir(images_dir)
@@ -104,7 +97,7 @@ class StrawberryDataset(utils.Dataset):
         # Add images
         for image_file_name in image_file_names:
 
-            # Get rid of the ".txt"
+            # Get rid of the ".png" extension
             image_name = image_file_name[:-4]
             image_path = os.path.join(images_dir, image_file_name)
 
@@ -156,40 +149,22 @@ class StrawberryDataset(utils.Dataset):
         
         return mask.astype(np.uint8), np.array(class_ids).astype(np.int32)
 
-        # # Convert polygons to a bitmap mask of shape
-        # # [height, width, instance_count]
-        # info = self.image_info[image_id]
-        # mask = np.zeros([info["height"], info["width"], len(info["polygons"])],
-        #                 dtype=np.uint8)
-        # for i, p in enumerate(info["polygons"]):
-        #     # Get indexes of pixels inside the polygon and set them to 1
-        #     rr, cc = skimage.draw.polygon(p['all_points_y'], p['all_points_x'])
-        #     mask[rr, cc, i] = 1
-
-        # # Return mask, and array of class IDs of each instance. Since we have
-        # # one class ID only, we return an array of 1s
-        # return mask.astype(np.bool), np.ones([mask.shape[-1]], dtype=np.int32)
-
     def image_reference(self, image_id):
         """Return the path of the image."""
+
         return self.image_info.path
-        # info = self.image_info[image_id]
-        # if info["source"] == "strawberry":
-        #     return info["path"]
-        # else:
-        #     super(self.__class__, self).image_reference(image_id)
 
 
 def train(model):
     """Train the model."""
     # Training dataset.
     dataset_train = StrawberryDataset()
-    dataset_train.load_strawberry(args.dataset, "train")
+    dataset_train.load_strawberry(args.dataset, "training")
     dataset_train.prepare()
 
     # Validation dataset
     dataset_val = StrawberryDataset()
-    dataset_val.load_strawberry(args.dataset, "val")
+    dataset_val.load_strawberry(args.dataset, "validation")
     dataset_val.prepare()
 
     # *** This training schedule is an example. Update to your needs ***
@@ -202,78 +177,6 @@ def train(model):
                 epochs=10,
                 # epochs=30,
                 layers='heads')
-
-
-def color_splash(image, mask):
-    """Apply color splash effect.
-    image: RGB image [height, width, 3]
-    mask: instance segmentation mask [height, width, instance count]
-
-    Returns result image.
-    """
-    # Make a grayscale copy of the image. The grayscale copy still
-    # has 3 RGB channels, though.
-    gray = skimage.color.gray2rgb(skimage.color.rgb2gray(image)) * 255
-    # Copy color pixels from the original color image where mask is set
-    if mask.shape[-1] > 0:
-        # We're treating all instances as one, so collapse the mask into one layer
-        mask = (np.sum(mask, -1, keepdims=True) >= 1)
-        splash = np.where(mask, image, gray).astype(np.uint8)
-    else:
-        splash = gray.astype(np.uint8)
-    return splash
-
-
-def detect_and_color_splash(model, image_path=None, video_path=None):
-    assert image_path or video_path
-
-    # Image or video?
-    if image_path:
-        # Run model detection and generate the color splash effect
-        print("Running on {}".format(args.image))
-        # Read image
-        image = skimage.io.imread(args.image)
-        # Detect objects
-        r = model.detect([image], verbose=1)[0]
-        # Color splash
-        splash = color_splash(image, r['masks'])
-        # Save output
-        file_name = "splash_{:%Y%m%dT%H%M%S}.png".format(datetime.datetime.now())
-        skimage.io.imsave(file_name, splash)
-    elif video_path:
-        import cv2
-        # Video capture
-        vcapture = cv2.VideoCapture(video_path)
-        width = int(vcapture.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(vcapture.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fps = vcapture.get(cv2.CAP_PROP_FPS)
-
-        # Define codec and create video writer
-        file_name = "splash_{:%Y%m%dT%H%M%S}.avi".format(datetime.datetime.now())
-        vwriter = cv2.VideoWriter(file_name,
-                                  cv2.VideoWriter_fourcc(*'MJPG'),
-                                  fps, (width, height))
-
-        count = 0
-        success = True
-        while success:
-            print("frame: ", count)
-            # Read next image
-            success, image = vcapture.read()
-            if success:
-                # OpenCV returns images as BGR, convert to RGB
-                image = image[..., ::-1]
-                # Detect objects
-                r = model.detect([image], verbose=0)[0]
-                # Color splash
-                splash = color_splash(image, r['masks'])
-                # RGB -> BGR to save image to video
-                splash = splash[..., ::-1]
-                # Add image to video writer
-                vwriter.write(splash)
-                count += 1
-        vwriter.release()
-    print("Saved to ", file_name)
 
 def detect_strawberry(model, inference_config, image_path):
     
@@ -294,13 +197,6 @@ def detect_strawberry(model, inference_config, image_path):
 
     visualize.display_instances(original_image, gt_bbox, gt_mask, gt_class_id, 
         dataset_train.class_names, figsize=(8, 8))
-
-    # results = model.detect([original_image], verbose=1)
-
-    # r = results[0]
-    # visualize.display_instances(original_image, r['rois'], r['masks'], r['class_ids'], 
-    #                             dataset_train.class_names, r['scores'], ax=get_ax())
-
 
 ############################################################
 #  Training
@@ -327,10 +223,7 @@ if __name__ == '__main__':
                         help='Logs and checkpoints directory (default=logs/)')
     parser.add_argument('--image', required=False,
                         metavar="path or URL to image",
-                        help='Image to apply the color splash effect on')
-    parser.add_argument('--video', required=False,
-                        metavar="path or URL to video",
-                        help='Video to apply the color splash effect on')
+                        help='Image for strawberry detection')
     args = parser.parse_args()
 
     # Validate arguments
@@ -395,8 +288,6 @@ if __name__ == '__main__':
         train(model)
     elif args.command == "detect":
         detect_strawberry(model, config, image_path=args.image)
-        # detect_and_color_splash(model, image_path=args.image,
-        #                         video_path=args.video)
     else:
         print("'{}' is not recognized. "
               "Use 'train' or 'splash'".format(args.command))
