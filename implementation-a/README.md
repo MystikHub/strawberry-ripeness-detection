@@ -35,3 +35,12 @@ To set up the project:
    GitHub](https://github.com/matterport/Mask_RCNN/releases/tag/v2.0) and save
    it as `repo/implementation-a/mask_rcnn_coco.h5`
 
+## Usage
+
+To train the model, run:
+
+`python strawberry.py train --dataset=../data --weights=coco`
+
+To detect strawberries in an image, run:
+
+`python strawberry.py detect --dataset=../data --weights=last`

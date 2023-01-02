@@ -25,12 +25,14 @@ Usage: import the module (see Jupyter notebooks for examples), or run from
 
 import cv2
 import datetime
-import json
+import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 import os
 import random
 import skimage.draw
 import sys
+import tensorflow as tf
 
 # Root directory of the project
 ROOT_DIR = os.path.abspath("./")
@@ -89,8 +91,8 @@ class StrawberryDataset(utils.Dataset):
         self.add_class("strawberry", 3, "Ripe")
 
         # Train or validation dataset?
-        assert subset in ["train", "val"]
-        images_dir = os.path.join(dataset_dir, "images")
+        assert subset in ["training", "validation"]
+        images_dir = os.path.join(dataset_dir, "images", subset)
 
         image_file_names = os.listdir(images_dir)
 
@@ -174,19 +176,20 @@ def train(model):
     print("Training network heads")
     model.train(dataset_train, dataset_val,
                 learning_rate=config.LEARNING_RATE,
-                epochs=10,
                 # epochs=30,
+                epochs=10,
+                # layers='5+')
                 layers='heads')
 
 def detect_strawberry(model, inference_config, image_path):
     
-    dataset_train = StrawberryDataset()
-    dataset_train.load_strawberry(args.dataset, "train")
-    dataset_train.prepare()
+    dataset_val = StrawberryDataset()
+    dataset_val.load_strawberry(args.dataset, "validation")
+    dataset_val.prepare()
 
-    image_id = random.choice(dataset_train.image_ids)
+    image_id = random.choice(dataset_val.image_ids)
     original_image, image_meta, gt_class_id, gt_bbox, gt_mask =\
-        modellib.load_image_gt(dataset_train, inference_config, 
+        modellib.load_image_gt(dataset_val, inference_config, 
                             image_id)
     
     log("original_image", original_image)
@@ -196,7 +199,13 @@ def detect_strawberry(model, inference_config, image_path):
     log("gt_mask", gt_mask)
 
     visualize.display_instances(original_image, gt_bbox, gt_mask, gt_class_id, 
-        dataset_train.class_names, figsize=(8, 8))
+        dataset_val.class_names, figsize=(8, 8))
+
+    results = model.detect([original_image], verbose=1)
+
+    r = results[0]
+    visualize.display_instances(original_image, r['rois'], r['masks'], r['class_ids'], 
+                                dataset_val.class_names, r['scores']) #, ax=matplotlib.get_ax())
 
 ############################################################
 #  Training
@@ -229,8 +238,8 @@ if __name__ == '__main__':
     # Validate arguments
     if args.command == "train":
         assert args.dataset, "Argument --dataset is required for training"
-    elif args.command == "detect":
-        assert args.image, "Provide --image to detect strawberries"
+    # elif args.command == "detect":
+    #     assert args.image, "Provide --image to detect strawberries"
 
     print("Weights: ", args.weights)
     print("Dataset: ", args.dataset)
@@ -277,11 +286,13 @@ if __name__ == '__main__':
     if args.weights.lower() == "coco":
         # Exclude the last layers because they require a matching
         # number of classes
-        model.load_weights(weights_path, by_name=True, exclude=[
-            "mrcnn_class_logits", "mrcnn_bbox_fc",
-            "mrcnn_bbox", "mrcnn_mask"])
+        tf.keras.Model.load_weights(model.keras_model, weights_path, by_name=True, skip_mismatch=True)
+        # model.load_weights(weights_path, by_name=True, exclude=[
+        #     "mrcnn_class_logits", "mrcnn_bbox_fc",
+        #     "mrcnn_bbox", "mrcnn_mask"])
     else:
-        model.load_weights(weights_path, by_name=True)
+        tf.keras.Model.load_weights(model.keras_model, weights_path, by_name=True)
+        # model.load_weights(weights_path, by_name=True)
 
     # Train or evaluate
     if args.command == "train":
