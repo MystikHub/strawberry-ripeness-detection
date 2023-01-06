@@ -24,10 +24,8 @@ To set up the project:
       training (we used 80% of the original dataset)
     - `repo/data/images/validation` containing the strawberry photographs used
       for validation (we used 20% of the original dataset)
-    - (Optional) `repo/data/instance_segmentation` containing the instance
-      segmentation data files. These files are not used during training or
-      evaluation since the same information is available in the
-      `instance+ripeness_segmantation` files
+    - `repo/data/instance_segmentation` containing the instance
+      segmentation data files
     - `repo/data/instance+ripeness_segmentation` containing the instance and
       ripeness segmentation data files
 5. Download the COCO pre-trained weights (`mask_rcnn_coco.h5`) from the [Mask
