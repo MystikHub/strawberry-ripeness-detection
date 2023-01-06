@@ -176,10 +176,10 @@ def train(model):
     print("Training network heads")
     model.train(dataset_train, dataset_val,
                 learning_rate=config.LEARNING_RATE,
-                # epochs=30,
-                epochs=10,
-                # layers='5+')
-                layers='heads')
+                epochs=30,
+                # epochs=10,
+                layers='5+')
+                # layers='heads')
 
 def detect_strawberry(model, inference_config, image_path):
     
