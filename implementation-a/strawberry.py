@@ -181,7 +181,7 @@ def train(model):
                 layers='5+')
                 # layers='heads')
 
-def detect_strawberry(model, inference_config, image_path):
+def validate_random(model, inference_config):
     
     dataset_val = StrawberryDataset()
     dataset_val.load_strawberry(args.dataset, "validation")
@@ -207,6 +207,16 @@ def detect_strawberry(model, inference_config, image_path):
     visualize.display_instances(original_image, r['rois'], r['masks'], r['class_ids'], 
                                 dataset_val.class_names, r['scores']) #, ax=matplotlib.get_ax())
 
+def detect(model, inference_config, image_path):
+    
+    image = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
+
+    results = model.detect([image], verbose=1)
+
+    r = results[0]
+    visualize.display_instances(image, r['rois'], r['masks'], r['class_ids'], 
+                                ['BG', 'Unripe', 'Partially ripe', 'Ripe'], r['scores']) #, ax=matplotlib.get_ax())
+
 ############################################################
 #  Training
 ############################################################
@@ -219,7 +229,7 @@ if __name__ == '__main__':
         description='Train Mask R-CNN to detect strawberries and their ripeness.')
     parser.add_argument("command",
                         metavar="<command>",
-                        help="'train' or 'detect'")
+                        help="'train', 'validate' or 'detect'")
     parser.add_argument('--dataset', required=False,
                         metavar="/path/to/strawberry/dataset/",
                         help='Directory of the strawberry dataset')
@@ -236,10 +246,10 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Validate arguments
-    if args.command == "train":
+    if args.command in ["train", "validate"]:
         assert args.dataset, "Argument --dataset is required for training"
-    # elif args.command == "detect":
-    #     assert args.image, "Provide --image to detect strawberries"
+    elif args.command == "detect":
+        assert args.image, "Provide --image to detect strawberries"
 
     print("Weights: ", args.weights)
     print("Dataset: ", args.dataset)
@@ -297,8 +307,10 @@ if __name__ == '__main__':
     # Train or evaluate
     if args.command == "train":
         train(model)
+    elif args.command == "validate":
+        validate_random(model, config)
     elif args.command == "detect":
-        detect_strawberry(model, config, image_path=args.image)
+        detect(model, config, image_path=args.image)
     else:
         print("'{}' is not recognized. "
-              "Use 'train' or 'splash'".format(args.command))
+              "Use 'train', 'validate', or 'detect'".format(args.command))
