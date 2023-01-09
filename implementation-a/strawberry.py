@@ -29,6 +29,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+import pandas as pd
 import random
 import skimage.draw
 import sys
@@ -41,6 +42,7 @@ ROOT_DIR = os.path.abspath("./")
 sys.path.append(os.path.join(ROOT_DIR, "mask-rcnn-fork"))  # To find local version of the library
 from mrcnn import model as modellib, utils
 from mrcnn import visualize
+from mrcnn import cm
 from mrcnn.config import Config
 from mrcnn.model import log
 
@@ -217,6 +219,96 @@ def detect(model, inference_config, image_path):
     visualize.display_instances(image, r['rois'], r['masks'], r['class_ids'], 
                                 ['BG', 'Unripe', 'Partially ripe', 'Ripe'], r['scores']) #, ax=matplotlib.get_ax())
 
+def confusion_matrix(model, inference_config):
+
+    #########################################################################
+    # Below is code for plotting a confusion matrix                         #
+    # Credit to: https://github.com/Altimis/Confusion-matrix-for-Mask-R-CNN #
+    #########################################################################
+
+    # Ground-truth and predictions lists
+    gt_tot = np.array([])
+    pred_tot = np.array([])
+    
+    mAP_ = []
+    
+    dataset_val = StrawberryDataset()
+    dataset_val.load_strawberry(args.dataset, "validation")
+    dataset_val.prepare()
+
+    # Compute gt_tot, pred_tot and mAP for each image in the test dataset
+    for image_id in dataset_val.image_ids:
+        image, image_meta, gt_class_id, gt_bbox, gt_mask =\
+            modellib.load_image_gt(dataset_val, inference_config, image_id)
+        info = dataset_val.image_info[image_id]
+
+        # Run the model
+        results = model.detect([image], verbose=1)
+        r = results[0]
+        
+        #compute gt_tot and pred_tot
+        gt, pred = cm.gt_pred_lists(gt_class_id, gt_bbox, r['class_ids'], r['rois'])
+        gt_tot = np.append(gt_tot, gt)
+        pred_tot = np.append(pred_tot, pred)
+        
+        #precision_, recall_, AP_ 
+        AP_, precision_, recall_, overlap_ = utils.compute_ap(gt_bbox, gt_class_id, gt_mask,
+                                            r['rois'], r['class_ids'], r['scores'], r['masks'])
+        #check if the vectors len are equal
+        print("the actual len of the gt vect is : ", len(gt_tot))
+        print("the actual len of the pred vect is : ", len(pred_tot))
+        
+        mAP_.append(AP_)
+        print("Average precision of this image : ", AP_)
+        print("The actual mean average precision for the whole images (matterport methode) ", sum(mAP_)/len(mAP_))
+        print("Ground truth object : " + str(np.array(dataset_val.class_names)[gt]))
+        print("Predicted object : " + str(np.array(dataset_val.class_names)[pred]))
+    
+    gt_tot=gt_tot.astype(int)
+    pred_tot=pred_tot.astype(int)
+    #save the vectors of gt and pred
+    save_dir = "/tmp"
+    gt_pred_tot_json = {"gt_tot" : gt_tot, "pred_tot" : pred_tot}
+    df = pd.DataFrame(gt_pred_tot_json)
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    df.to_json(os.path.join(save_dir,"gt_pred_test.json"))
+        
+    #print the confusion matrix and compute true postives, false positives and false negative for each class: 
+    #ps : you can controle the figure size and text format by choosing the right values
+    tp, fp, fn = cm.plot_confusion_matrix_from_data(gt_tot, pred_tot, dataset_val.class_names, fz=18, figsize=(20,20), lw=0.5)
+
+    ###########################################################################################################################
+
+    #since in this notebook i didnt run the loop above, here is an example of plotting using manual generated vectors :
+    #let 0 be the background class
+    # gt_tot=[1,2,3,1,2,3,1,2,3,1,2,3,1,2,3,0,1,2,3,0,1,2,3,0,1,2,0]
+    # pred_tot=[1,2,3,3,2,1,1,2,3,1,2,3,1,2,0,2,2,2,3,1,0,0,3,2,1,2,0]
+
+    # #supose we have 1 image containing the gt classes bellow :
+    # gt_class_id = np.array([1,2,3,1,2,3])
+    # #with the bbox :
+    # gt_bbox = np.array([np.array([10,100,20,200]),np.array([100,10,200,20]),np.array([110,15,220,25]),np.array([20,200,20,200]),
+    #                     np.array([90,15,220,20]),np.array([100,10,150,20])])
+    # #and the model detected the classes : 
+    # pred_class_id = np.array([2,3,2,3,2,3])
+    # #with the bbox : 
+    # pred_bbox = np.array([np.array([100,10,200,20]),np.array([110,15,220,25]),np.array([90,15,220,20]),np.array([101,20,100,21]),
+    #                     np.array([500,20,1,20]),np.array([100,10,150,20])])
+
+    # #for this image, the gt and pred lists are :    
+    # gt, pred = cm.gt_pred_lists(gt_class_id, gt_bbox, pred_class_id, pred_bbox)
+    # gt_tot = np.append(gt_tot, gt)
+    # pred_tot = np.append(pred_tot, pred)
+
+    # print("ground truth list : ",gt_tot)
+    # print("predicted list : ",pred_tot)
+
+    # #here i didnt set the columns list, since in the code if columns is note specified 
+    # #it generates automatically a list from "class A" to "class ..". in this example, class A should be the background
+    # #Note : class A is the backround in this example
+    # tp,fp,fn = cm.plot_confusion_matrix_from_data(gt_tot,pred_tot,fz=18, figsize=(20,20), lw=0.5)
+
 ############################################################
 #  Training
 ############################################################
@@ -229,7 +321,7 @@ if __name__ == '__main__':
         description='Train Mask R-CNN to detect strawberries and their ripeness.')
     parser.add_argument("command",
                         metavar="<command>",
-                        help="'train', 'validate' or 'detect'")
+                        help="'train', 'validate', 'detect', or 'confusion'")
     parser.add_argument('--dataset', required=False,
                         metavar="/path/to/strawberry/dataset/",
                         help='Directory of the strawberry dataset')
@@ -297,12 +389,8 @@ if __name__ == '__main__':
         # Exclude the last layers because they require a matching
         # number of classes
         tf.keras.Model.load_weights(model.keras_model, weights_path, by_name=True, skip_mismatch=True)
-        # model.load_weights(weights_path, by_name=True, exclude=[
-        #     "mrcnn_class_logits", "mrcnn_bbox_fc",
-        #     "mrcnn_bbox", "mrcnn_mask"])
     else:
         tf.keras.Model.load_weights(model.keras_model, weights_path, by_name=True)
-        # model.load_weights(weights_path, by_name=True)
 
     # Train or evaluate
     if args.command == "train":
@@ -311,6 +399,8 @@ if __name__ == '__main__':
         validate_random(model, config)
     elif args.command == "detect":
         detect(model, config, image_path=args.image)
+    elif args.command == "confusion":
+        confusion_matrix(model, config)
     else:
         print("'{}' is not recognized. "
               "Use 'train', 'validate', or 'detect'".format(args.command))
