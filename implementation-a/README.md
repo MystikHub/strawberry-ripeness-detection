@@ -9,8 +9,11 @@ dataset can be found in the `strawberry.py` file.
 To set up the project:
 
 1. Install Python version 3.10.8 or newer
-2. Install the Mask R-CNN dependencies with:
-    - `pip install -r mask-rcnn/requirements.txt`
+2. Install the Mask R-CNN and strawberry inference dependencies with:
+```bash
+pip install -r mask-rcnn/requirements.txt
+pip install -r requirements.txt
+```
 3. If you would like to train the model on an Nvidia GPU, additionally install:
     - `tensorflow-gpu>=2.11.0` (and optionally uninstall the `tensorflow`
       package). This step may not be necessary, since tensorflow might have
