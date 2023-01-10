@@ -34,6 +34,7 @@ import random
 import skimage.draw
 import sys
 import tensorflow as tf
+import time
 
 # Root directory of the project
 ROOT_DIR = os.path.abspath("./")
@@ -266,6 +267,7 @@ def confusion_matrix(model, inference_config):
     
     gt_tot=gt_tot.astype(int)
     pred_tot=pred_tot.astype(int)
+
     #save the vectors of gt and pred
     save_dir = "/tmp"
     gt_pred_tot_json = {"gt_tot" : gt_tot, "pred_tot" : pred_tot}
@@ -274,40 +276,38 @@ def confusion_matrix(model, inference_config):
         os.makedirs(save_dir)
     df.to_json(os.path.join(save_dir,"gt_pred_test.json"))
         
-    #print the confusion matrix and compute true postives, false positives and false negative for each class: 
-    #ps : you can controle the figure size and text format by choosing the right values
     tp, fp, fn = cm.plot_confusion_matrix_from_data(gt_tot, pred_tot, dataset_val.class_names, fz=18, figsize=(20,20), lw=0.5)
 
-    ###########################################################################################################################
+def inference_profiler(model, inference_config):
+    # Just loop through each validation image, sum ONLY the inference time, and get the average
+    profiler_total = 0;
+    profiler_count = 0;
+    
+    dataset_val = StrawberryDataset()
+    dataset_val.load_strawberry(args.dataset, "validation")
+    dataset_val.prepare()
 
-    #since in this notebook i didnt run the loop above, here is an example of plotting using manual generated vectors :
-    #let 0 be the background class
-    # gt_tot=[1,2,3,1,2,3,1,2,3,1,2,3,1,2,3,0,1,2,3,0,1,2,3,0,1,2,0]
-    # pred_tot=[1,2,3,3,2,1,1,2,3,1,2,3,1,2,0,2,2,2,3,1,0,0,3,2,1,2,0]
+    APs = []
+    precisions = []
+    recalls = []
+    for image_id in dataset_val.image_ids:
 
-    # #supose we have 1 image containing the gt classes bellow :
-    # gt_class_id = np.array([1,2,3,1,2,3])
-    # #with the bbox :
-    # gt_bbox = np.array([np.array([10,100,20,200]),np.array([100,10,200,20]),np.array([110,15,220,25]),np.array([20,200,20,200]),
-    #                     np.array([90,15,220,20]),np.array([100,10,150,20])])
-    # #and the model detected the classes : 
-    # pred_class_id = np.array([2,3,2,3,2,3])
-    # #with the bbox : 
-    # pred_bbox = np.array([np.array([100,10,200,20]),np.array([110,15,220,25]),np.array([90,15,220,20]),np.array([101,20,100,21]),
-    #                     np.array([500,20,1,20]),np.array([100,10,150,20])])
+        image, image_meta, gt_class_id, gt_bbox, gt_mask =\
+            modellib.load_image_gt(dataset_val, inference_config, image_id)
+        
+        inference_start = time.time()
+        results = model.detect([image], verbose=1)
+        inference_end = time.time()
 
-    # #for this image, the gt and pred lists are :    
-    # gt, pred = cm.gt_pred_lists(gt_class_id, gt_bbox, pred_class_id, pred_bbox)
-    # gt_tot = np.append(gt_tot, gt)
-    # pred_tot = np.append(pred_tot, pred)
+        inference_time = inference_end - inference_start
+        
+        profiler_total += inference_time
+        profiler_count += 1
 
-    # print("ground truth list : ",gt_tot)
-    # print("predicted list : ",pred_tot)
+    print()
+    print()
+    print("Average inference time: {}".format(profiler_total / profiler_count))
 
-    # #here i didnt set the columns list, since in the code if columns is note specified 
-    # #it generates automatically a list from "class A" to "class ..". in this example, class A should be the background
-    # #Note : class A is the backround in this example
-    # tp,fp,fn = cm.plot_confusion_matrix_from_data(gt_tot,pred_tot,fz=18, figsize=(20,20), lw=0.5)
 
 ############################################################
 #  Training
@@ -321,7 +321,7 @@ if __name__ == '__main__':
         description='Train Mask R-CNN to detect strawberries and their ripeness.')
     parser.add_argument("command",
                         metavar="<command>",
-                        help="'train', 'validate', 'detect', or 'confusion'")
+                        help="'train', 'validate', 'detect', 'confusion', or 'profiler'")
     parser.add_argument('--dataset', required=False,
                         metavar="/path/to/strawberry/dataset/",
                         help='Directory of the strawberry dataset')
@@ -401,6 +401,8 @@ if __name__ == '__main__':
         detect(model, config, image_path=args.image)
     elif args.command == "confusion":
         confusion_matrix(model, config)
+    elif args.command == "profiler":
+        inference_profiler(model, config)
     else:
         print("'{}' is not recognized. "
               "Use 'train', 'validate', or 'detect'".format(args.command))
